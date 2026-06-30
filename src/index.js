@@ -6,7 +6,7 @@ const CONFIG = {
   host: process.env.MC_HOST || 'mc.arch.lol',
   port: Number(process.env.MC_PORT || 25565),
   username: process.env.MC_USERNAME || 'RohitS5612',
-  password: process.env.MC_PASSWORD || 'Xzsawq@123',
+  password: process.env.MC_PASSWORD || 'pswd',
   queueName: process.env.MC_QUEUE || 'survival',
   reconnectDelayMs: Number(process.env.RECONNECT_DELAY_MS || 10000),
   loginDelayMs: Number(process.env.LOGIN_DELAY_MS || 3000),
