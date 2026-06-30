@@ -6,7 +6,7 @@ const CONFIG = {
   host: process.env.MC_HOST || 'mc.arch.lol',
   port: Number(process.env.MC_PORT || 25565),
   username: process.env.MC_USERNAME || 'RohitS5612',
-  password: process.env.MC_PASSWORD || 'Xzsawq@123',
+  password: process.env.MC_PASSWORD || 'pswd',
   queueName: process.env.MC_QUEUE || 'survival',
   reconnectDelayMs: Number(process.env.RECONNECT_DELAY_MS || 10000),
   loginDelayMs: Number(process.env.LOGIN_DELAY_MS || 3000),
@@ -31,7 +31,6 @@ let reconnectTimer = null
 let queueRetryTimer = null
 let fallbackTimer = null
 let lastQueueAt = 0
-let loginIssued = false
 
 function log (message) {
   console.log(`[${new Date().toISOString()}] ${message}`)
@@ -51,20 +50,10 @@ function redact (message) {
 }
 
 function safeChat (message) {
-  if (!bot) return false
+  if (!bot?.player) return false
   log(`Chat: ${redact(message)}`)
   bot.chat(message)
   return true
-}
-
-function formatReason (reason) {
-  if (typeof reason === 'string') return reason
-
-  try {
-    return JSON.stringify(reason)
-  } catch {
-    return String(reason)
-  }
 }
 
 function setPhase (nextPhase) {
@@ -116,23 +105,14 @@ function scheduleQueueRetry () {
   }, CONFIG.queueRetryMs)
 }
 
-function sendLogin (reason) {
-  if (!bot || loginIssued || phase !== PHASE.WAITING_FOR_FIRST_SPAWN) return false
-
-  loginIssued = true
-  setPhase(PHASE.LOGIN_SENT)
-  log(`Sending login because ${reason}.`)
-  safeChat(`/login ${CONFIG.password}`)
-  scheduleFallback(afterLoginTransfer, 'Login')
-  return true
-}
-
 async function startLoginWorkflow () {
   const token = ++actionToken
   await sleep(CONFIG.loginDelayMs)
-  if (!bot || token !== actionToken) return
+  if (!bot?.player || token !== actionToken) return
 
-  sendLogin('the initial login delay elapsed')
+  setPhase(PHASE.LOGIN_SENT)
+  safeChat(`/login ${CONFIG.password}`)
+  scheduleFallback(afterLoginTransfer, 'Login')
 }
 
 async function afterLoginTransfer () {
@@ -200,7 +180,6 @@ function scheduleReconnect () {
 
 function createBot () {
   actionToken += 1
-  loginIssued = false
   setPhase(PHASE.WAITING_FOR_FIRST_SPAWN)
   queueRetryTimer = clearTimer(queueRetryTimer)
   fallbackTimer = clearTimer(fallbackTimer)
@@ -216,16 +195,10 @@ function createBot () {
   })
 
   bot.on('spawn', handleSpawn)
-  bot.on('login', () => {
-    log('Logged into connection.')
-    setTimeout(() => sendLogin('the connection login event fired'), 250)
-  })
-  bot.on('kicked', reason => log(`Kicked: ${formatReason(reason)}`))
+  bot.on('login', () => log('Logged into connection.'))
+  bot.on('kicked', reason => log(`Kicked: ${reason}`))
   bot.on('error', error => log(`Bot error: ${error.message}`))
-  bot.on('messagestr', message => {
-    log(`Server: ${message}`)
-    if (/\/login\s+<password>|login using/i.test(message)) sendLogin('the server requested /login')
-  })
+  bot.on('messagestr', message => log(`Server: ${message}`))
 
   bot.on('end', reason => {
     log(`Disconnected: ${reason || 'unknown reason'}`)
