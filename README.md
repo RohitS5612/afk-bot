@@ -31,8 +31,6 @@ The defaults match the requested server and account, but can be overridden with 
 | `MC_QUEUE` | `survival` |
 | `RECONNECT_DELAY_MS` | `10000` |
 | `LOGIN_DELAY_MS` | `3000` |
-| `LOGIN_RETRY_MS` | `500` |
-| `MAX_LOGIN_ATTEMPTS` | `5` |
 | `TRANSFER_SETTLE_MS` | `5000` |
 | `QUEUE_RETRY_MS` | `5000` |
 | `MOVE_DURATION_MS` | `900` |

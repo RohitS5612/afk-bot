@@ -6,12 +6,10 @@ const CONFIG = {
   host: process.env.MC_HOST || 'mc.arch.lol',
   port: Number(process.env.MC_PORT || 25565),
   username: process.env.MC_USERNAME || 'RohitS5612',
-  password: process.env.MC_PASSWORD || 'Xzsawq@123',
+  password: process.env.MC_PASSWORD || 'pswd',
   queueName: process.env.MC_QUEUE || 'survival',
   reconnectDelayMs: Number(process.env.RECONNECT_DELAY_MS || 10000),
   loginDelayMs: Number(process.env.LOGIN_DELAY_MS || 3000),
-  loginRetryMs: Number(process.env.LOGIN_RETRY_MS || 500),
-  maxLoginAttempts: Number(process.env.MAX_LOGIN_ATTEMPTS || 5),
   transferSettleMs: Number(process.env.TRANSFER_SETTLE_MS || 5000),
   queueRetryMs: Number(process.env.QUEUE_RETRY_MS || 5000),
   moveDurationMs: Number(process.env.MOVE_DURATION_MS || 900),
@@ -33,8 +31,6 @@ let reconnectTimer = null
 let queueRetryTimer = null
 let fallbackTimer = null
 let lastQueueAt = 0
-let loginAttempts = 0
-let loginRetryTimer = null
 
 function log (message) {
   console.log(`[${new Date().toISOString()}] ${message}`)
@@ -54,20 +50,10 @@ function redact (message) {
 }
 
 function safeChat (message) {
-  if (!bot) return false
+  if (!bot?.player) return false
   log(`Chat: ${redact(message)}`)
   bot.chat(message)
   return true
-}
-
-function formatReason (reason) {
-  if (typeof reason === 'string') return reason
-
-  try {
-    return JSON.stringify(reason)
-  } catch {
-    return String(reason)
-  }
 }
 
 function setPhase (nextPhase) {
@@ -119,39 +105,19 @@ function scheduleQueueRetry () {
   }, CONFIG.queueRetryMs)
 }
 
-function scheduleLoginRetry () {
-  loginRetryTimer = clearTimer(loginRetryTimer)
-  loginRetryTimer = setTimeout(() => {
-    if (!bot || phase !== PHASE.LOGIN_SENT || loginAttempts >= CONFIG.maxLoginAttempts) return
-    sendLogin('the login retry timer fired')
-  }, CONFIG.loginRetryMs)
-}
-
-function sendLogin (reason) {
-  if (!bot || ![PHASE.WAITING_FOR_FIRST_SPAWN, PHASE.LOGIN_SENT].includes(phase)) return false
-  if (loginAttempts >= CONFIG.maxLoginAttempts) return false
-
-  loginAttempts += 1
-  setPhase(PHASE.LOGIN_SENT)
-  log(`Sending login attempt ${loginAttempts}/${CONFIG.maxLoginAttempts} because ${reason}.`)
-  safeChat(`/login ${CONFIG.password}`)
-  scheduleFallback(afterLoginTransfer, 'Login')
-  scheduleLoginRetry()
-  return true
-}
-
 async function startLoginWorkflow () {
   const token = ++actionToken
   await sleep(CONFIG.loginDelayMs)
-  if (!bot || token !== actionToken) return
+  if (!bot?.player || token !== actionToken) return
 
-  sendLogin('the initial login delay elapsed')
+  setPhase(PHASE.LOGIN_SENT)
+  safeChat(`/login ${CONFIG.password}`)
+  scheduleFallback(afterLoginTransfer, 'Login')
 }
 
 async function afterLoginTransfer () {
   const token = ++actionToken
   fallbackTimer = clearTimer(fallbackTimer)
-  loginRetryTimer = clearTimer(loginRetryTimer)
   await sleep(CONFIG.transferSettleMs)
   if (!bot?.player || token !== actionToken) return
 
@@ -214,12 +180,9 @@ function scheduleReconnect () {
 
 function createBot () {
   actionToken += 1
-  loginAttempts = 0
-  loginRetryTimer = clearTimer(loginRetryTimer)
   setPhase(PHASE.WAITING_FOR_FIRST_SPAWN)
   queueRetryTimer = clearTimer(queueRetryTimer)
   fallbackTimer = clearTimer(fallbackTimer)
-  loginRetryTimer = clearTimer(loginRetryTimer)
   reconnectTimer = clearTimer(reconnectTimer)
 
   log(`Connecting to ${CONFIG.host}:${CONFIG.port} as ${CONFIG.username}.`)
@@ -232,23 +195,16 @@ function createBot () {
   })
 
   bot.on('spawn', handleSpawn)
-  bot.on('login', () => {
-    log('Logged into connection.')
-    sendLogin('the connection login event fired')
-  })
-  bot.on('kicked', reason => log(`Kicked: ${formatReason(reason)}`))
+  bot.on('login', () => log('Logged into connection.'))
+  bot.on('kicked', reason => log(`Kicked: ${reason}`))
   bot.on('error', error => log(`Bot error: ${error.message}`))
-  bot.on('messagestr', message => {
-    log(`Server: ${message}`)
-    if (/\/login\s+<password>|login using/i.test(message)) sendLogin('the server requested /login')
-  })
+  bot.on('messagestr', message => log(`Server: ${message}`))
 
   bot.on('end', reason => {
     log(`Disconnected: ${reason || 'unknown reason'}`)
     bot = null
     queueRetryTimer = clearTimer(queueRetryTimer)
     fallbackTimer = clearTimer(fallbackTimer)
-    loginRetryTimer = clearTimer(loginRetryTimer)
     scheduleReconnect()
   })
 }
@@ -257,7 +213,6 @@ process.on('SIGINT', () => {
   log('Stopping bot.')
   queueRetryTimer = clearTimer(queueRetryTimer)
   fallbackTimer = clearTimer(fallbackTimer)
-  loginRetryTimer = clearTimer(loginRetryTimer)
   reconnectTimer = clearTimer(reconnectTimer)
   if (bot) bot.quit('Stopping')
   process.exit(0)
@@ -267,7 +222,6 @@ process.on('SIGTERM', () => {
   log('Stopping bot.')
   queueRetryTimer = clearTimer(queueRetryTimer)
   fallbackTimer = clearTimer(fallbackTimer)
-  loginRetryTimer = clearTimer(loginRetryTimer)
   reconnectTimer = clearTimer(reconnectTimer)
   if (bot) bot.quit('Stopping')
   process.exit(0)
